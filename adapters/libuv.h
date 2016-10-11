@@ -17,7 +17,20 @@ static void redisLibuvPoll(uv_poll_t* handle, int status, int events) {
   redisLibuvEvents* p = (redisLibuvEvents*)handle->data;
 
   if (status != 0) {
-    redisAsyncFree(p->context);
+    redisAsyncContext *ac = p->context;
+    
+    /* 若此时 flags 已经 CONNECTED, 则此时无任何副作用. 
+     * 否则若 flags 尚未 CONNECTED, 则此时会设置 CONNECTED 标志, 主要是想让 redisAsyncFree() 
+     * 会执行 onDisconnect() 回调.
+     *
+     * NOTE: 这里已经验证当设置了 CONNECTED 时, redisAsyncFree() 并不会执行额外的操作. 验证
+     * 依赖版本: 5f98e1d35dcf00a026793ada2. 
+     *
+     * NOTE: 这里虽然会调用 onDisconnect(), 但是调用形式: ac->onDisconnect(ac,REDIS_OK); 所以
+     * 用户在 onDisconnect() 的处理中不能依赖与 onDisconnect() 的 status 参数.
+     */
+    ac->c.flags |= REDIS_CONNECTED;
+    redisAsyncFree(ac);
     // p->context = NULL;
     return;
   }
